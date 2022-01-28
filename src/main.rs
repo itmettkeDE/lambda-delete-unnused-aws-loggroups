@@ -1,51 +1,65 @@
 //! This tool removes log groups which are no longer in use
+//!
+//! # Setup
+//!
+//! This lambda requires the following IAM Policy to be able to list Cloudwatch LogGroups,
+//! Lambdas and CodeBuild Projects, as well as delete CloudWatch LogGroups.
+//!
+//! ```json
+//! {
+//!     "Version": "2012-10-17",
+//!     "Statement": [
+//!         {
+//!             "Effect": "Allow",
+//!             "Action": [
+//!                 "logs:CreateLogStream",
+//!                 "logs:PutLogEvents"
+//!             ],
+//!             "Resource": [
+//!                 "arn:aws:logs:{region}:{account_id}:log-group:${lambda_name}:log-stream:*",
+//!                 "arn:aws:logs:{region}:{account_id}:log-group:${lambda_name}"
+//!             ]
+//!         },
+//!         {
+//!             "Effect": "Allow",
+//!             "Action": [
+//!                 "logs:DeleteLogGroup",
+//!                 "logs:DescribeLogGroups"
+//!             ],
+//!             "Resource": "*"
+//!         },
+//!         {
+//!             "Effect": "Allow",
+//!             "Action": [
+//!                 "lambda:ListFunctions"
+//!             ],
+//!             "Resource": "*"
+//!         },
+//!         {
+//!             "Effect": "Allow",
+//!             "Action": [
+//!                 "codebuild:ListProjects"
+//!             ],
+//!             "Resource": "*"
+//!         }
+//!     ]
+//! }
+//! ```
+//!
+//! # Parameters
+//!
+//! The lambda function has the following parameters. You can define
+//! them via environment variables.
+//!
+//! ## Environment Variables
+//! ```sh
+//! # Optional, skip if not required. off | error | warn | info (default) | debug | trace
+//! # Defines the log level
+//! LOG_LEVEL=""
+//! ```
 
-#![warn(
-    absolute_paths_not_starting_with_crate,
-    anonymous_parameters,
-    deprecated_in_future,
-    elided_lifetimes_in_paths,
-    explicit_outlives_requirements,
-    indirect_structural_match,
-    keyword_idents,
-    macro_use_extern_crate,
-    meta_variable_misuse,
-    missing_copy_implementations,
-    missing_crate_level_docs,
-    missing_debug_implementations,
-    missing_docs,
-    missing_doc_code_examples,
-    non_ascii_idents,
-    private_doc_tests,
-    trivial_casts,
-    trivial_numeric_casts,
-    unaligned_references,
-    unreachable_pub,
-    unsafe_code,
-    unstable_features,
-    unused_crate_dependencies,
-    unused_extern_crates,
-    unused_import_braces,
-    unused_lifetimes,
-    unused_qualifications,
-    unused_results,
-    variant_size_differences
-)]
-#![warn(
-    clippy::cargo,
-    clippy::complexity,
-    clippy::correctness,
-    clippy::nursery,
-    clippy::perf,
-    clippy::style
-)]
-#![allow(
-    clippy::future_not_send,
-    clippy::multiple_crate_versions,
-    clippy::redundant_pub_crate,
-    clippy::wildcard_dependencies
-)]
-#![cfg_attr(docsrs, feature(doc_cfg))]
+#![deny(clippy::all, clippy::nursery)]
+#![deny(nonstandard_style, rust_2018_idioms)]
 
 mod aws;
 
@@ -58,7 +72,51 @@ struct Runner;
 
 #[async_trait::async_trait]
 impl lambda_runtime_types::Runner<(), (), ()> for Runner {
-    async fn run<'a>(_shared: &'a (), _event: (), _region: &'a str) -> anyhow::Result<()> {
+    async fn run<'a>(_shared: &'a (), _event: (), region: &'a str) -> anyhow::Result<()> {
+        use anyhow::Context;
+        use std::str::FromStr;
+
+        let region = rusoto_core::Region::from_str(region)
+            .with_context(|| format!("Invalid region: {}", region))?;
+        let cloudwatch = aws::Logs::new(region.clone());
+        let lambda = aws::Lambda::new(region.clone());
+        let codebuild = aws::CodeBuild::new(region);
+
+        let groups = cloudwatch
+            .get_log_groups()
+            .await?
+            .into_iter()
+            .filter_map(|g| g.log_group_name)
+            .collect::<Vec<_>>();
+        let lambdas = lambda
+            .get_functions()
+            .await?
+            .into_iter()
+            .filter_map(|f| f.function_name)
+            .collect::<std::collections::HashSet<_>>();
+        let projects = codebuild
+            .get_projects()
+            .await?
+            .into_iter()
+            .collect::<std::collections::HashSet<_>>();
+
+        for group in groups {
+            if let Some(lgroup) = group.strip_prefix("/aws/lambda/") {
+                if lambdas.contains(lgroup) {
+                    log::debug!("Ignoring LogGroup for Lambda: {} - {}", group, lgroup);
+                    continue;
+                }
+            } else if let Some(cgroup) = group.strip_prefix("/aws/codebuild/") {
+                if projects.contains(cgroup) {
+                    log::debug!("Ignoring LogGroup for CodeBuild: {} - {}", group, cgroup);
+                    continue;
+                }
+            } else {
+                continue;
+            }
+            log::info!("Deleting LogGroup: {}", group);
+            cloudwatch.delete_log_group(&group).await?;
+        }
         Ok(())
     }
 
