@@ -72,7 +72,12 @@ struct Runner;
 
 #[async_trait::async_trait]
 impl lambda_runtime_types::Runner<(), (), ()> for Runner {
-    async fn run<'a>(_shared: &'a (), _event: (), region: &'a str, _ctx: lambda_runtime_types::Context) -> anyhow::Result<()> {
+    async fn run<'a>(
+        _shared: &'a (),
+        _event: (),
+        region: &'a str,
+        _ctx: lambda_runtime_types::Context,
+    ) -> anyhow::Result<()> {
         use anyhow::Context;
         use std::str::FromStr;
 
