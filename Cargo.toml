@@ -1,6 +1,6 @@
 [package]
 name = "lambda-delete-unnused-aws-loggroups"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Marc Mettke <marc@itmettke.de>"]
 edition = "2021"
 description = "Delete unused loggroups from AWS CloudWatch"
