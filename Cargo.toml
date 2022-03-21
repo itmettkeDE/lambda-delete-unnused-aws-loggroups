@@ -17,7 +17,7 @@ test = ["lambda-runtime-types/test"]
 [dependencies]
 anyhow = "1"
 async-trait = "0.1"
-lambda-runtime-types = { version = "0.5", default-features = false, features = ["rotate"] }
+lambda-runtime-types = { version = "0.6", default-features = false, features = ["rotate"] }
 log = "0.4"
 rusoto_codebuild = "0.47"
 rusoto_core = "0.47"
