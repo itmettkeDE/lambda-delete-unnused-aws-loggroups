@@ -71,18 +71,16 @@ const ENV_VAR_LOG_LEVEL: &str = "LOG_LEVEL";
 struct Runner;
 
 #[async_trait::async_trait]
-impl lambda_runtime_types::Runner<(), (), ()> for Runner {
-    async fn run<'a>(
+impl<'a> lambda_runtime_types::Runner<'a, (), (), ()> for Runner {
+    async fn run(
         _shared: &'a (),
-        _event: (),
-        region: &'a str,
-        _ctx: lambda_runtime_types::Context,
+        event: lambda_runtime_types::LambdaEvent<'a, ()>,
     ) -> anyhow::Result<()> {
         use anyhow::Context;
         use std::str::FromStr;
 
-        let region = rusoto_core::Region::from_str(region)
-            .with_context(|| format!("Invalid region: {}", region))?;
+        let region = rusoto_core::Region::from_str(event.region)
+            .with_context(|| format!("Invalid region: {}", event.region))?;
         let cloudwatch = aws::Logs::new(region.clone());
         let lambda = aws::Lambda::new(region.clone());
         let codebuild = aws::CodeBuild::new(region);
@@ -125,7 +123,7 @@ impl lambda_runtime_types::Runner<(), (), ()> for Runner {
         Ok(())
     }
 
-    async fn setup() -> anyhow::Result<()> {
+    async fn setup(_region: &'a str) -> anyhow::Result<()> {
         use anyhow::Context;
         use std::str::FromStr;
 
