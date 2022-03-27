@@ -1,3 +1,5 @@
+> This Repo is not in use anymore. These functions are now available at https://github.com/itmettkeDE/lambdas
+
 # lambda-delete-unnused-aws-loggroups
 
 This tool removes log groups which are no longer in use
